@@ -10,6 +10,10 @@
 ## 运行
 
 ```
+sudo apt-get update && sudo apt-get install \
+        libelf1 libelf-dev zlib1g-dev make cmake git libboost1.74-all-dev \
+        binutils-dev libyaml-cpp-dev ca-certificates clang llvm pkg-config llvm-dev
+git submodule update --init --recursive
 sudo make release JOBS=$(nproc) //编译安装 bpftime cli 到 /root/.bpftime
 make -C zpoline
 make -C zpoline/hook_func_def
