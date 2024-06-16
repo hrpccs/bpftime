@@ -4,6 +4,7 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
   cmake_policy(SET CMP0135 NEW)
 endif()
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
 set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fno-omit-frame-pointer")
@@ -133,12 +134,7 @@ set(SPDLOG_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog/include)
 # argparse
 add_subdirectory(third_party/argparse)
 
-# main library
-add_subdirectory(vm)
 
-add_subdirectory(attach)
-
-add_subdirectory(runtime)
 
 
 # add to single archive if option is enabled
@@ -181,9 +177,6 @@ DESTINATION ~/.bpftime
 
 endif()
 
-if (${BUILD_BPFTIME_DAEMON})
-  add_subdirectory(daemon)
-endif()
 add_subdirectory(tools)
 
 if(${BUILD_ATTACH_IMPL_EXAMPLE})
@@ -191,9 +184,7 @@ if(${BUILD_ATTACH_IMPL_EXAMPLE})
 endif()
 
 # benchmark that requires bpftime libraries
-add_subdirectory(benchmark)
 
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
-install(TARGETS bpftime-agent bpftime_text_segment_transformer bpftime-syscall-server CONFIGURATIONS Release Debug RelWithDebInfo DESTINATION ~/.bpftime)

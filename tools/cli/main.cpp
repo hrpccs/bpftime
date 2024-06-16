@@ -1,5 +1,3 @@
-#include "bpftime_shm.hpp"
-#include "bpftime_shm_internal.hpp"
 #include "spdlog/spdlog.h"
 #include "spdlog/cfg/env.h"
 #include <cerrno>
@@ -160,42 +158,12 @@ int main(int argc, const char **argv)
 		.help("Run without commiting any modifications")
 		.flag();
 
-	argparse::ArgumentParser load_command("load");
+	argparse::ArgumentParser intercept_command("intercept");
+	intercept_command.add_description(
+		"Intercept write syscall and change it to user-defined function which call writev syscall");
+	intercept_command.add_argument("PID").scan<'i', int>();
+	program.add_subparser(intercept_command);
 
-	load_command.add_description(
-		"Start an application with bpftime-server injected");
-	load_command.add_argument("COMMAND")
-		.help("Command to run")
-		.nargs(argparse::nargs_pattern::at_least_one)
-		.remaining();
-
-	argparse::ArgumentParser start_command("start");
-
-	start_command.add_description(
-		"Start an application with bpftime-agent injected");
-	start_command.add_argument("-s", "--enable-syscall-trace")
-		.help("Whether to enable syscall trace")
-		.flag();
-	start_command.add_argument("COMMAND")
-		.nargs(argparse::nargs_pattern::at_least_one)
-		.remaining()
-		.help("Command to run");
-
-	argparse::ArgumentParser attach_command("attach");
-
-	attach_command.add_description("Inject bpftime-agent to a certain pid");
-	attach_command.add_argument("-s", "--enable-syscall-trace")
-		.help("Whether to enable syscall trace")
-		.flag();
-	attach_command.add_argument("PID").scan<'i', int>();
-
-	argparse::ArgumentParser detach_command("detach");
-	detach_command.add_description("Detach all attached agents");
-
-	program.add_subparser(load_command);
-	program.add_subparser(start_command);
-	program.add_subparser(attach_command);
-	program.add_subparser(detach_command);
 	try {
 		program.parse_args(argc, argv);
 	} catch (const std::exception &err) {
@@ -208,89 +176,14 @@ int main(int argc, const char **argv)
 		std::exit(1);
 	}
 	std::filesystem::path install_path(program.get("install-location"));
-	if (program.is_subcommand_used("load")) {
-		auto so_path = install_path / "libbpftime-syscall-server.so";
+	if (program.is_subcommand_used("intercept")) {
+		auto pid = intercept_command.get<int>("PID");
+		auto so_path = install_path / "libzpoline.so";
 		if (!std::filesystem::exists(so_path)) {
 			spdlog::error("Library not found: {}", so_path.c_str());
 			return 1;
 		}
-		auto [executable_path, extra_args] =
-			extract_path_and_args(load_command);
-		return run_command(executable_path.c_str(), extra_args,
-				   so_path.c_str(), nullptr);
-	} else if (program.is_subcommand_used("start")) {
-		auto agent_path = install_path / "libbpftime-agent.so";
-		if (!std::filesystem::exists(agent_path)) {
-			spdlog::error("Library not found: {}",
-				      agent_path.c_str());
-			return 1;
-		}
-		auto [executable_path, extra_args] =
-			extract_path_and_args(start_command);
-		if (start_command.get<bool>("enable-syscall-trace")) {
-			auto transformer_path =
-				install_path /
-				"libbpftime-agent-transformer.so";
-			if (!std::filesystem::exists(transformer_path)) {
-				spdlog::error("Library not found: {}",
-					      transformer_path.c_str());
-				return 1;
-			}
-
-			return run_command(executable_path.c_str(), extra_args,
-					   transformer_path.c_str(),
-					   agent_path.c_str());
-		} else {
-			return run_command(executable_path.c_str(), extra_args,
-					   agent_path.c_str(), nullptr);
-		}
-	} else if (program.is_subcommand_used("attach")) {
-		auto agent_path = install_path / "libbpftime-agent.so";
-		if (!std::filesystem::exists(agent_path)) {
-			spdlog::error("Library not found: {}",
-				      agent_path.c_str());
-			return 1;
-		}
-		auto pid = attach_command.get<int>("PID");
-		if (attach_command.get<bool>("enable-syscall-trace")) {
-			auto transformer_path =
-				install_path /
-				"libbpftime-agent-transformer.so";
-			if (!std::filesystem::exists(transformer_path)) {
-				spdlog::error("Library not found: {}",
-					      transformer_path.c_str());
-				return 1;
-			}
-			return inject_by_frida(pid, transformer_path.c_str(),
-					       agent_path.c_str());
-		} else {
-			return inject_by_frida(pid, agent_path.c_str(), "");
-		}
-	} else if (program.is_subcommand_used("detach")) {
-		SPDLOG_DEBUG("Detaching..");
-		try {
-			bpftime_initialize_global_shm(
-				bpftime::shm_open_type::SHM_OPEN_ONLY);
-		} catch (std::exception &ex) {
-			SPDLOG_WARN(
-				"Shared memory not created, seems syscall server is not running");
-			return 0;
-		}
-		bool sended = false;
-		bpftime::shm_holder.global_shared_memory
-			.iterate_all_pids_in_alive_agent_set([&](int pid) {
-				SPDLOG_INFO("Delivering SIGUSR1 to {}", pid);
-				int err = kill(pid, SIGUSR1);
-				if (err < 0) {
-					SPDLOG_WARN(
-						"Unable to signal process {}: {}",
-						pid, strerror(errno));
-				}
-				sended = true;
-			});
-		if (!sended) {
-			SPDLOG_INFO("No process was signaled.");
-		}
-	}
+		return inject_by_frida(pid, so_path.c_str(), "");
+	} 
 	return 0;
 }
